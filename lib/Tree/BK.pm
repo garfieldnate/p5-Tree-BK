@@ -1,9 +1,9 @@
 package Tree::BK;
+
 use strict;
 use warnings;
 use Text::Levenshtein::XS qw(distance);
 use Carp;
-# VERSION
 
 # ABSTRACT: Structure for efficient fuzzy matching
 =head1 SYNOPSIS
