@@ -1,107 +1,152 @@
-#modified from "Effective Perl Programming" by Joseph N. Hall, et al.
 package Tree::BK;
 use strict;
 use warnings;
-use autodie;
+use Text::Levenshtein::XS qw(distance);
+use Carp;
 # VERSION
 
-
-# ABSTRACT: Default Module Template
+# ABSTRACT: Structure for efficient fuzzy matching
 =head1 SYNOPSIS
 
 	use Tree::BK;
-	my $obj = Tree::BK->new();
-	$obj->message();
+	my $tree = Tree::BK->new();
+	$tree->insert(qw(cuba cubic cube cubby thing foo bar));
+	$tree->find('cube', 1); # cuba, cube
+	$tree->find('cube', 2); # cuba, cubic, cube, cubby
 
 =head1 DESCRIPTION
 
-Description here
+The Burkhard-Keller, or BK tree, is a structure for efficiently
+performing fuzzy matching. By default, this module assumes string
+input and uses L<Text::Levenshtein::XS/distance> to compare items
+and build the tree. However, a subroutine giving the distance
+between two tree members may be provided, making this structure
+more generally usable.
 
 =cut
-
-__PACKAGE__->new->_run unless caller;
-
-sub _run {
-	my ($application) = @_;
-	print { $application->{output_fh} }
-		$application->message;
-}
 
 =head1 METHODS
 
 =head2 C<new>
 
-Creates a new instance of Tree::BK
+Creates a new instance of Tree::BK. A metric may be provided as an
+argument. It should be a subroutine which takes two tree members
+as arguments and returns a positive integer indicating the distance
+between them. If no metric is provided, then the tree members are
+assumed to be strings, and L<Text::Levenshtein::XS/distance> is used
+as the metric.
 
 =cut
 
 sub new {
-	my ($class) = @_;
-	my $application = bless {}, $class;
-	$application->_init;
-	return $application;
-}
-
-sub _init {
-	my ($application) = @_;
-	$application->{output_fh} = \*STDOUT;
-	$application->{input_fh} = \*STDIN;
-	return;
-}
-
-=head2 C<output_fh>
-
-Input: filehandle or filename
-
-Sets the filehandle for this object to print to.
-
-=cut
-
-sub output_fh {
-	my ( $application, $fh ) = @_;
-	if ($fh) {
-		if(ref($fh) eq 'GLOB'){
-			$application->{output_fh} = $fh;
+	my ($class, $metric) = @_;
+	if(defined $metric){
+		if((ref $metric) ne 'CODE'){
+			croak 'argument to new() should be ' .
+				'a code reference implementing a metric';
 		}
-		else{
-			open my $fh2, '>', $fh;
-			$application->{output_fh} = $fh2;
-		}
+	}else{
+		$metric = \&Text::Levenshtein::XS::distance;
 	}
-	return $application->{output_fh};
+	my $tree = bless {
+		metric => $metric,
+		root => undef,
+		size => 0,
+	}, $class;
+	return $tree;
 }
 
-=head2 C<input_fh>
+=head2 C<insert>
 
-Input: filehandle or filename
-
-Sets the filehandle for this object to read from.
+Inserts an object into the tree. Returns nothing if the object
+was already in the tree, or the object if it was added to the tree.
 
 =cut
 
-sub input_fh {
-	my ( $application, $fh ) = @_;
-	if ($fh) {
-		if(ref($fh) eq 'GLOB'){
-			$application->{input_fh} = $fh;
-		}
-		else{
-			open my $fh2, '<', $fh;
-			$application->{input_fh} = $fh2;
-		}
+sub insert {
+	my ($self, $object) = @_;
+	if(!defined $self->{root}){
+		$self->{root} = { object=>$object };
+		$self->{size}++;
+		return $object;
 	}
-	return $application->{input_fh};
+
+	my $current = $self->{root};
+	my $dist = $self->{metric}->($current->{object}, $object);
+	while(exists $current->{$dist}){
+		# object was already in the tree
+		if($dist == 0){
+			return;
+		}
+		$current = $current->{$dist};
+		$dist = $self->{metric}->($current->{object}, $object);
+	}
+	# prevent adding the root node multiple times
+	if($dist == 0){
+		return;
+	}
+	$current->{$dist} = {object => $object};
+	$self->{size}++;
+	return $object;
 }
 
-=head2 C<other_subroutines>
+=head2 C<insert_all>
 
-PUT MORE SUBROUTINES HERE
+Inserts all of the input objects into the tree. Returns the number
+of objects that were added to the tree (i.e. the number of objects
+that weren't already present in the tree).
 
 =cut
+sub insert_all {
+	my ($self, @objects) = @_;
+	if(@objects < 1){
+		croak 'Must pass at least one object to insert_all method';
+	}
+	my $size_before = $self->size;
+	$self->insert($_) for @objects;
+	return $self->size - $size_before;
+}
 
-sub other_subroutines {
-	"YOUR WORK STARTS HERE\n";
+=head2 C<find>
+
+ $tree->find($target, $distance)
+
+Returns an array ref containing all of the objects in the tree
+which are at most C<$distance> distance away from C<$target>.
+
+=cut
+sub find {
+	my ($self, $target, $threshold) = @_;
+	my @return;
+	$self->_find($self->{root}, \@return, $target, $threshold);
+	return \@return;
+}
+
+sub _find {
+	my ($self, $node, $current_list, $target, $threshold) = @_;
+	my $distance = $self->{metric}->($node->{object}, $target);
+	my $min_dist = $distance - $threshold;
+	my $max_dist = $distance + $threshold;
+	if($distance <= $threshold){
+		push @$current_list, $node->{object};
+	}
+	# recursively search the children where nodes with the threshold
+	# distance might reside
+	for(keys %$node){
+		next if $_ eq 'object';
+		next unless $_ >= $min_dist && $_ <= $max_dist;
+		$self->_find($node->{$_}, $current_list, $target, $threshold);
+	}
+}
+
+=head2 C<size>
+
+Returns the number of objects currently stored in the tree.
+
+=cut
+sub size {
+	my ($self) = @_;
+	return $self->{size};
 }
 
 1;
-
