@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use Test::More;
 plan tests => 6;
-use Test::NoWarnings;
+use Test::Exception;
 use Tree::BK;
 
 throws_ok {
