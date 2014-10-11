@@ -29,6 +29,8 @@ more generally usable.
 
 =head2 C<new>
 
+ Tree::BK->new(\&metric);
+
 Creates a new instance of Tree::BK. A metric may be provided as an
 argument. It should be a subroutine which takes two tree members
 as arguments and returns a positive integer indicating the distance
@@ -148,5 +150,23 @@ sub size {
 	my ($self) = @_;
 	return $self->{size};
 }
+
+=head1 SEE ALSO
+
+These sites explain the concept of a BK tree pretty well:
+
+=over
+
+=item
+
+L<http://nullwords.wordpress.com/2013/03/13/the-bk-tree-a-data-structure-for-spell-checking/>
+
+=item
+
+L<http://blog.notdot.net/2007/4/Damn-Cool-Algorithms-Part-1-BK-Trees>
+
+=back
+
+=cut
 
 1;
