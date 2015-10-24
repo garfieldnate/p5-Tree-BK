@@ -10,7 +10,7 @@ use Carp;
 
 	use Tree::BK;
 	my $tree = Tree::BK->new();
-	$tree->insert(qw(cuba cubic cube cubby thing foo bar));
+	$tree->insert_all(qw(cuba cubic cube cubby thing foo bar));
 	$tree->find('cube', 1); # cuba, cube
 	$tree->find('cube', 2); # cuba, cubic, cube, cubby
 
